@@ -1,0 +1,41 @@
+---
+- name: create controlplane authorized key
+  hosts: controlplane
+  connection: local
+  gather_facts: false
+  
+  tasks:
+    - name: check if a file exists
+      stat:
+        path: ~/.ssh/id_rsa
+      register: id_rsa
+
+    - name: create authorized key
+      shell: "ssh-keygen -b 2048 -t rsa -f ~/.ssh/id_rsa -q -N ''"
+      when: not id_rsa.stat.exists
+    
+- name: create known_hosts on cotrolplane and input authorized key to node
+  hosts: node
+  connection: local
+  gather_facts: false
+  vars:
+    ansible_password: vagrant
+
+  tasks:
+    - name: node authorized key scan
+      shell: ssh-keyscan -t ecdsa {{ ansible_host }}
+      register: keyscan
+
+    - name: create known_hosts on cotrolplane
+      lineinfile:
+        path: ~/.ssh/known_hosts
+        line: "{{ item }}"
+        create: yes
+      loop: "{{ keyscan.stdout_lines }}"
+    
+    - name: input authorized key to node
+      connection: ssh
+      authorized_key:
+        user: vagrant
+        state: present
+        key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
